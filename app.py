@@ -19,11 +19,10 @@ def carregar_recursos():
         else:
             st.error(f"❌ Erro crítico: O arquivo compactado `{PATH_ZIP}` não foi encontrado!")
 
-    # 2. Carregamento do modelo SpaCy
+    # 2. Carregamento do modelo SpaCy (Correção do UnboundLocalError feita aqui)
     try:
         nlp = spacy.load("pt_core_news_sm")
     except OSError:
-        import os
         os.system("python -m spacy download pt_core_news_sm")
         nlp = spacy.load("pt_core_news_sm")
         
@@ -44,17 +43,17 @@ def pre_processar_texto(texto):
             gatilho_idx = idx
             break
             
-    texto_indexado_list = []
+    texto_indexaged_list = []
     texto_input_list = []
     
-    for idx, palabra in enumerate(palavras):
-        texto_indexado_list.append(f"{idx} {palavra}")
+    for idx, palavra in enumerate(palavras):
+        texto_indexaged_list.append(f"{idx} {palavra}")
         if idx == gatilho_idx:
             texto_input_list.append(f"{idx} *{palavra}*")
         else:
             texto_input_list.append(f"{idx} {palavra}")
             
-    return " ".join(texto_indexado_list), " ".join(texto_input_list), palavras
+    return " ".join(texto_indexaged_list), " ".join(texto_input_list), palavras
 
 # --- CONFIGURAÇÃO DA INTERFACE STREAMLIT ---
 st.set_page_config(page_title="Análise Semântica FrameNet T5", page_icon="🧠", layout="wide")
@@ -91,8 +90,8 @@ if st.button("🚀 Processar Frase", type="primary"):
         json_mock_retorno = {
             "frame": "Sending",
             "arguments": {
-                "Theme":  " ",     # CORRIGIDO: Mapeia os índices de "o relatório"
-                "Recipient": [4, 5]    # Mapeia os índices de "o Diretor"
+                "Theme": " ",       
+                "Recipient":    
             }
         }
         
