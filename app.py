@@ -19,15 +19,14 @@ def carregar_recursos():
         else:
             st.error(f"❌ Erro crítico: O arquivo compactado `{PATH_ZIP}` não foi encontrado!")
 
-    # 2. Carregamento do modelo SpaCy (Correção do UnboundLocalError feita aqui)
-    try:
-        nlp = spacy.load("pt_core_news_sm")
-    except OSError:
-        os.system("python -m spacy download pt_core_news_sm")
-        nlp = spacy.load("pt_core_news_sm")
+    # 2. Carregamento direto do modelo SpaCy (instalado via requirements.txt)
+    nlp = spacy.load("pt_core_news_sm")
         
     modelo_hibrido = HybridT5Model(model_name="t5-small", num_frames=50) 
     return nlp, modelo_hibrido
+
+
+
 
 # Inicializa o cache
 nlp, modelo_hibrido = carregar_recursos()
