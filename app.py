@@ -87,23 +87,16 @@ if st.button("🚀 Processar Frase", type="primary"):
         with col2:
             st.success(f"**Entrada Formatada para o T5 (Target):**\n`{input_modelo}`")
             
-      
-        
         # 2. Resposta processada pelo modelo T5 (Exemplo estruturado baseado na frase digitada)
         json_mock_retorno = {
             "frame": "Sending",
             "arguments": {
-                "Theme":,       # Mapeia "o relatório"
-                "Recipient": [4, 5]     # Mapeia "o Diretor"
+                "Theme":,       # Mapeia os índices de "o relatório"
+                "Recipient": [4, 5]    # Mapeia os índices de "o Diretor"
             }
         }
-        
-        
-        
-        
-        
-        
-        
+
+       
         st.divider()
         st.subheader("📦 Saída Estruturada do Modelo (JSON)")
         st.json(json_mock_retorno)
