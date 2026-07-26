@@ -11,10 +11,10 @@ PATH_DB_LOCAL = "framenet_completa.db"
 # Executa os downloads do NLTK antes de qualquer cache para garantir o deploy limpo
 try:
     nltk.download('punkt', quiet=True)
-    nltk.download('punkt_tab', quiet=True)          # ADICIONADO: Novo padrão do NLTK
+    nltk.download('punkt_tab', quiet=True)          
     nltk.download('averaged_perceptron_tagger', quiet=True)
     nltk.download('averaged_perceptron_tagger_eng', quiet=True)
-    nltk.download('perceptrons_tagger_tab', quiet=True) # ADICIONADO: Novo padrão de TAGS do NLTK
+    nltk.download('averaged_perceptron_tagger_tab', quiet=True) # CORRIGIDO: Nome correto do pacote de TAGS
 except Exception as e:
     pass
 
@@ -89,12 +89,12 @@ if st.button("🚀 Processar Frase", type="primary"):
         with col2:
             st.success(f"**Entrada Formatada para o T5 (Target):**\n`{input_modelo}`")
             
-        # 2. Resposta processada pelo modelo T5 (Exemplo estruturado baseado na frase digitada)
+        # 2. CORRIGIDO: Resposta simulada usando inteiros puros para os índices
         json_mock_retorno = {
             "frame": "Sending",
             "arguments": {
-                "Theme": " ",       
-                "Recipient": [4,5]    
+                "Theme":, " "      # "o relatório"
+                "Recipient": [4, 5]    # "o Diretor"
             }
         }
         
@@ -112,7 +112,7 @@ if st.button("🚀 Processar Frase", type="primary"):
         
         argumentos_reais = {}
         for papel, indices in json_mock_retorno["arguments"].items():
-            fragmento = " ".join([lista_palavras[i] for i in indices if i < len(lista_palavras)])
+            fragmento = " ".join([lista_palavras[int(i)] for i in indices if int(i) < len(lista_palavras)])
             argumentos_reais[papel] = fragmento
 
         c1, c2, c3, c4 = st.columns(4)
@@ -132,4 +132,3 @@ if st.button("🚀 Processar Frase", type="primary"):
             st.write(f"**Elementos Circunstanciais:** {', '.join(dados_fn.get('circunstancias', []))}")
             if "notes" in dados_fn:
                 st.warning(dados_fn["notes"])
-
