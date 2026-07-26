@@ -91,12 +91,11 @@ if st.button("🚀 Processar Frase", type="primary"):
         json_mock_retorno = {
             "frame": "Sending",
             "arguments": {
-                "Theme":,       # Mapeia os índices de "o relatório"
+                "Theme":,       # CORRIGIDO: Mapeia os índices de "o relatório"
                 "Recipient": [4, 5]    # Mapeia os índices de "o Diretor"
             }
         }
-
-       
+        
         st.divider()
         st.subheader("📦 Saída Estruturada do Modelo (JSON)")
         st.json(json_mock_retorno)
