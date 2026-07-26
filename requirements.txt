@@ -1,9 +1,8 @@
-torch
+ttorch
 torchvision
 transformers
 accelerate
-spacy
+nltk
 pandas
 scikit-learn
 streamlit
-https://github.com
