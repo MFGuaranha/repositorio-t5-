@@ -91,7 +91,7 @@ if st.button("🚀 Processar Frase", type="primary"):
         json_mock_retorno = {
             "frame": "Sending",
             "arguments": {
-                "Theme":,       # CORRIGIDO: Mapeia os índices de "o relatório"
+                "Theme":,  None,     # CORRIGIDO: Mapeia os índices de "o relatório"
                 "Recipient": [4, 5]    # Mapeia os índices de "o Diretor"
             }
         }
