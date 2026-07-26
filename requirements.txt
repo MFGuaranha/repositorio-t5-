@@ -1,4 +1,4 @@
-ttorch
+torch
 torchvision
 transformers
 accelerate
