@@ -94,7 +94,7 @@ if st.button("🚀 Processar Frase", type="primary"):
             "frame": "Sending",
             "arguments": {
                 "Theme": " ",       
-                "Recipient" [4,5]:    
+                "Recipient": [4,5]    
             }
         }
         
