@@ -93,7 +93,7 @@ if st.button("🚀 Processar Frase", type="primary"):
         json_mock_retorno = {
             "frame": "Sending",
             "arguments": {
-                "Theme":, " "      # "o relatório"
+                "Theme": " " ,     # "o relatório"
                 "Recipient": [4, 5]    # "o Diretor"
             }
         }
