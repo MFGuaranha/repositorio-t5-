@@ -1,1 +1,7 @@
-
+torch
+transformers
+accelerate
+spacy
+pandas
+scikit-learn
+streamlit
