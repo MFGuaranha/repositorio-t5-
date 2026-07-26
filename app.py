@@ -1,7 +1,7 @@
 import streamlit as st
-import spacy
 import os
 import zipfile
+import nltk
 from app_model import HybridT5Model, buscar_detalhes_framenet
 
 # Definição dos caminhos locais e do arquivo compactado
@@ -10,7 +10,7 @@ PATH_DB_LOCAL = "framenet_completa.db"
 
 @st.cache_resource
 def carregar_recursos():
-    """Garante que os modelos, dependências e arquivos sejam extraídos apenas uma vez."""
+    """Garante que os modelos, dependências do NLTK e arquivos sejam extraídos apenas uma vez."""
     # 1. Extração automática do Banco de Dados caso ele não exista descompactado
     if not os.path.exists(PATH_DB_LOCAL):
         if os.path.exists(PATH_ZIP):
@@ -19,46 +19,50 @@ def carregar_recursos():
         else:
             st.error(f"❌ Erro crítico: O arquivo compactado `{PATH_ZIP}` não foi encontrado!")
 
-    # 2. Carregamento direto do modelo SpaCy (instalado via requirements.txt)
-    nlp = spacy.load("pt_core_news_sm")
+    # 2. Downloads necessários do NLTK (Silenciosos para não travar o front-end)
+    nltk.download('punkt', quiet=True)
+    nltk.download('averaged_perceptron_tagger', quiet=True)
+    nltk.download('averaged_perceptron_tagger_eng', quiet=True) # Fallback para ambientes Unix
         
     modelo_hibrido = HybridT5Model(model_name="t5-small", num_frames=50) 
-    return nlp, modelo_hibrido
+    return modelo_hibrido
 
+# Inicializa o cache dos modelos
+modelo_hibrido = carregar_recursos()
 
-
-
-# Inicializa o cache
-nlp, modelo_hibrido = carregar_recursos()
-
-def pre_processar_texto(texto):
-    """Transforma o texto no padrão indexado com marcação de alvos (*target*)."""
-    doc = nlp(texto)
-    palavras = [token.text for token in doc]
+def pre_processar_texto_nltk(texto):
+    """Transforma o texto no padrão indexado com marcação de alvos (*target*) usando NLTK."""
+    # Tokenização inicial em palavras
+    palavras = nltk.word_tokenize(texto)
     
+    # Classificação gramatical (POS Tagging)
+    # VB: Verbo base, VBD: Verbo no passado, VBG: Gerúndio, VBN: Particípio, VBP/VBZ: Presente
+    tags_gramaticais = nltk.pos_tag(palavras)
+    
+    # Identifica o primeiro verbo encontrado na frase como gatilho (target)
     gatilho_idx = None
-    for idx, token in enumerate(doc):
-        if token.pos_ in ["VERB", "AUX"]:
+    for idx, (palavra, tag) in enumerate(tags_gramaticais):
+        if tag.startswith('VB'):  # Captura qualquer variação de classe verbal
             gatilho_idx = idx
             break
             
-    texto_indexaged_list = []
+    texto_indexado_list = []
     texto_input_list = []
     
     for idx, palavra in enumerate(palavras):
-        texto_indexaged_list.append(f"{idx} {palavra}")
+        texto_indexado_list.append(f"{idx} {palavra}")
         if idx == gatilho_idx:
             texto_input_list.append(f"{idx} *{palavra}*")
         else:
             texto_input_list.append(f"{idx} {palavra}")
             
-    return " ".join(texto_indexaged_list), " ".join(texto_input_list), palavras
+    return " ".join(texto_indexado_list), " ".join(texto_input_list), palavras
 
 # --- CONFIGURAÇÃO DA INTERFACE STREAMLIT ---
 st.set_page_config(page_title="Análise Semântica FrameNet T5", page_icon="🧠", layout="wide")
 
 st.title("🧠 Extrator Semântico Baseado em Frames (T5 Híbrido)")
-st.subheader("Transforme linguagem natural em dados estruturados com Deep Learning")
+st.subheader("Transforme linguagem natural em dados estruturados com Deep Learning (NLTK Backend)")
 
 # Validação visual do banco de dados na inicialização
 if not os.path.exists(PATH_DB_LOCAL):
@@ -76,8 +80,8 @@ if st.button("🚀 Processar Frase", type="primary"):
     if texto_usuario.strip() == "":
         st.warning("Por favor, insira um texto válido.")
     else:
-        # 1. Processamento de texto
-        texto_idx, input_modelo, lista_palavras = pre_processar_texto(texto_usuario)
+        # 1. Processamento de texto com o novo motor NLTK
+        texto_idx, input_modelo, lista_palavras = pre_processar_texto_nltk(texto_usuario)
         
         col1, col2 = st.columns(2)
         with col1:
@@ -89,8 +93,8 @@ if st.button("🚀 Processar Frase", type="primary"):
         json_mock_retorno = {
             "frame": "Sending",
             "arguments": {
-                "Theme": " ",       
-                "Recipient":  [4,5]  
+                "Theme":,       
+                "Recipient":    
             }
         }
         
@@ -126,5 +130,5 @@ if st.button("🚀 Processar Frase", type="primary"):
         with st.expander("🔍 Ver Elementos Teóricos do Frame no Banco de Dados"):
             st.write(f"**Elementos Centrais (Core):** {', '.join(dados_fn.get('objetos', []))}")
             st.write(f"**Elementos Circunstanciais:** {', '.join(dados_fn.get('circunstancias', []))}")
-            if "notas" in dados_fn:
-                st.warning(dados_fn["notas"])
+            if "notes" in dados_fn:
+                st.warning(dados_fn["notes"])
