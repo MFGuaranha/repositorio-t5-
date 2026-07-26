@@ -6,3 +6,4 @@ spacy
 pandas
 scikit-learn
 streamlit
+https://github.com
