@@ -2,6 +2,7 @@ import streamlit as st
 import os
 import zipfile
 import nltk
+print("[LOG app.py] 🎬 Carregando o script principal... Solicitando recursos de app_model.py")
 from app_model import HybridT5Model, buscar_detalhes_framenet
 
 PATH_ZIP = "framenet_completa.zip"
@@ -17,13 +18,16 @@ except Exception as e:
 
 @st.cache_resource
 def carregar_recursos():
+    print("[LOG app.py] 📥 Executando a função cacheada 'carregar_recursos'...")
     if not os.path.exists(PATH_DB_LOCAL):
         if os.path.exists(PATH_ZIP):
+            print("[LOG app.py] 📦 Banco .db ausente. Extraindo arquivos do arquivo compactado zip...")
             with zipfile.ZipFile(PATH_ZIP, 'r') as zip_ref:
                 zip_ref.extractall(".")
         else:
             st.error(f"❌ Erro crítico: O arquivo compactado `{PATH_ZIP}` não foi encontrado!")
     
+    print("[LOG app.py] 🔌 Instanciando a Inteligência Híbrida do T5...")
     return HybridT5Model(model_name="t5-small", num_frames=50)
 
 modelo_hibrido = carregar_recursos()
@@ -40,7 +44,7 @@ def pre_processar_texto_nltk(texto):
             
     texto_indexado_list = []
     texto_input_list = []
-    for idx, palabra in enumerate(palavras):
+    for idx, palavra in enumerate(palavras):
         texto_indexado_list.append(f"{idx} {palavra}")
         if idx == gatilho_idx:
             texto_input_list.append(f"{idx} *{palavra}*")
@@ -73,6 +77,7 @@ if st.button("🚀 Processar Frase", type="primary"):
     if texto_usuario.strip() == "":
         st.warning("Por favor, insira um texto válido.")
     else:
+        print(f"\n[LOG app.py] 🖱 O usuário clicou no botão! Processando a frase: '{texto_usuario}'")
         texto_idx, input_modelo, lista_palavras = pre_processar_texto_nltk(texto_usuario)
         
         col1, col2 = st.columns(2)
@@ -81,15 +86,19 @@ if st.button("🚀 Processar Frase", type="primary"):
         with col2:
             st.success(f"**Entrada Formatada para o T5 (Target):**\n`{input_modelo}`")
             
+        print("[LOG app.py] 📞 Chamando a função 'predict' do arquivo app_model.py...")
         with st.spinner("Modelos preditivos em execução..."):
             json_real_retorno = modelo_hibrido.predict(input_modelo)
+        print("[LOG app.py] 📥 Resposta recebida da predição do modelo com sucesso.")
             
         st.divider()
         st.subheader("📦 Saída Estruturada do Modelo (JSON Real)")
         st.json(json_real_retorno)
         
         nome_frame = json_real_retorno["frame"]
+        print(f"[LOG app.py] 📞 Chamando a função 'buscar_detalhes_framenet' para o frame '{nome_frame}'...")
         dados_fn = buscar_detalhes_framenet(PATH_DB_LOCAL, nome_frame)
+        print("[LOG app.py] 📥 Dados da FrameNet carregados com sucesso do SQLite.")
         
         st.divider()
         st.subheader("📋 Informações Linguísticas Extraídas do seu Texto")
@@ -129,3 +138,4 @@ if st.button("🚀 Processar Frase", type="primary"):
             
         if "notes" in dados_fn:
             st.warning(dados_fn["notes"])
+        print("[LOG app.py] ✨ Renderização final concluída na tela do usuário.\n" + "="*50)
