@@ -92,7 +92,9 @@ def buscar_detalhes_framenet(db_path, frame_name):
         cursor = conn.cursor()
         
         cursor.execute("SELECT definicao FROM frames WHERE nome = ?", (frame_name,))
+        print (" SQL ", "SELECT definicao FROM frames WHERE nome = ?", (frame_name,))
         row_frame = cursor.fetchone()
+        print ("row_frame ", row_frame)
         if row_frame:
             dados_linguisticos["definicao"] = row_frame[0]
             
@@ -102,7 +104,12 @@ def buscar_detalhes_framenet(db_path, frame_name):
             JOIN frames f ON fe.frame_id = f.id_frame
             WHERE f.nome = ?
         """, (frame_name,))
-        
+        print (" SQL 2 ", """"
+            SELECT fe.nome_fe, fe.tipo_coreness 
+            FROM frame_elements fe
+            JOIN frames f ON fe.frame_id = f.id_frame
+            WHERE f.nome = ?
+        """, (frame_name,))
         rows_fe = cursor.fetchall()
         print(f"[LOG app_model] 🗄 Encontrados {len(rows_fe)} elementos vinculados ao frame no banco.")
         for nome_fe, tipo_coreness in rows_fe:
@@ -121,4 +128,5 @@ def buscar_detalhes_framenet(db_path, frame_name):
         dados_linguisticos["notes"] = f"Erro ao acessar a estrutura do banco: {str(e)}"
         
     print("[LOG app_model] 📤 SAÍDA DE 'buscar_detalhes_framenet': Retornando dados estruturados para a interface.")
+    print("dados_linguisticos  ", dados_linguisticos )
     return dados_linguisticos
