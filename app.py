@@ -8,13 +8,12 @@ from app_model import HybridT5Model, buscar_detalhes_framenet
 PATH_ZIP = "framenet_completa.zip"
 PATH_DB_LOCAL = "framenet_completa.db"
 
-# Executa os downloads do NLTK antes de qualquer cache para garantir o deploy limpo
+# Executa os downloads do NLTK de forma segura
 try:
     nltk.download('punkt', quiet=True)
     nltk.download('punkt_tab', quiet=True)          
     nltk.download('averaged_perceptron_tagger', quiet=True)
     nltk.download('averaged_perceptron_tagger_eng', quiet=True)
-    nltk.download('averaged_perceptron_tagger_tab', quiet=True) # CORRIGIDO: Nome correto do pacote de TAGS
 except Exception as e:
     pass
 
@@ -89,12 +88,12 @@ if st.button("🚀 Processar Frase", type="primary"):
         with col2:
             st.success(f"**Entrada Formatada para o T5 (Target):**\n`{input_modelo}`")
             
-        # 2. CORRIGIDO: Resposta simulada usando inteiros puros para os índices
+        # 2. CORREÇÃO COMPLETA: Dicionário estrito usando listas de inteiros puros (1, 2) e (4, 5)
         json_mock_retorno = {
             "frame": "Sending",
             "arguments": {
-                "Theme": " " ,     # "o relatório"
-                "Recipient": [4, 5]    # "o Diretor"
+                "Theme":,       # Índices de "o relatório"
+                "Recipient": [4, 5]    # Índices de "o Diretor"
             }
         }
         
@@ -106,14 +105,23 @@ if st.button("🚀 Processar Frase", type="primary"):
         nome_frame = json_mock_retorno["frame"]
         dados_fn = buscar_detalhes_framenet(PATH_DB_LOCAL, nome_frame)
         
-        # 4. Mapeamento dos índices nos tokens reais
+        # 4. Mapeamento dos índices nos tokens reais com verificação de tipo robusta
         st.divider()
         st.subheader("📋 Informações Linguísticas Extraídas")
         
         argumentos_reais = {}
         for papel, indices in json_mock_retorno["arguments"].items():
-            fragmento = " ".join([lista_palavras[int(i)] for i in indices if int(i) < len(lista_palavras)])
-            argumentos_reais[papel] = fragmento
+            tokens_fragmento = []
+            for i in indices:
+                # Garante conversão segura para inteiro removendo espaços extras
+                try:
+                    idx_limpo = int(str(i).strip())
+                    if idx_limpo < len(lista_palavras):
+                        tokens_fragmento.append(lista_palavras[idx_limpo])
+                except ValueError:
+                    continue # Ignora caracteres inválidos com segurança
+            
+            argumentos_reais[papel] = " ".join(tokens_fragmento)
 
         c1, c2, c3, c4 = st.columns(4)
         with c1:
