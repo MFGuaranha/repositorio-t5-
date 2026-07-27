@@ -92,7 +92,7 @@ if st.button("🚀 Processar Frase", type="primary"):
         json_mock_retorno = {
             "frame": "Sending",
             "arguments": {
-                "Theme":  " " ,    # Índices de "o relatório"
+                "Theme":  [1,2] ,    # Índices de "o relatório"
                 "Recipient": [4, 5]    # Índices de "o Diretor"
             }
         }
