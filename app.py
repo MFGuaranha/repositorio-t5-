@@ -1,129 +1,131 @@
-import sqlite3
-import torch
-import torch.nn as nn
-import json
-import re
-from transformers import T5ForConditionalGeneration, T5Tokenizer
+import streamlit as st
+import os
+import zipfile
+import nltk
+from app_model import HybridT5Model, buscar_detalhes_framenet
 
-class HybridT5Model(nn.Module):
-    """
-    Modelo T5 customizado com uma cabeça de classificação paralela
-    para predição de Frames e geração de argumentos estruturados.
-    """
-    def __init__(self, model_name="t5-small", num_frames=50):
-        super(HybridT5Model, self).__init__()
-        self.t5 = T5ForConditionalGeneration.from_pretrained(model_name)
-        self.tokenizer = T5Tokenizer.from_pretrained(model_name, legacy=False)
-        self.hidden_size = self.t5.config.d_model
-        self.frame_classifier = nn.Linear(self.hidden_size, num_frames)
-        
-        # Mapeamento reverso dos IDs para os nomes reais de Frames
-        self.id_para_frame = {i: "Sending" if i == 0 else f"Frame_{i}" for i in range(num_frames)}
+PATH_ZIP = "framenet_completa.zip"
+PATH_DB_LOCAL = "framenet_completa.db"
 
-    def forward(self, input_ids, attention_mask, labels=None, frame_labels=None):
-        encoder_outputs = self.t5.encoder(input_ids=input_ids, attention_mask=attention_mask)
-        pooled_output = encoder_outputs.last_hidden_state[:, 0, :]
-        frame_logits = self.frame_classifier(pooled_output)
-        
-        if labels is not None and frame_labels is not None:
-            outputs = self.t5(encoder_outputs=encoder_outputs, attention_mask=attention_mask, labels=labels)
-            loss_generation = outputs.loss
-            loss_fn = nn.CrossEntropyLoss()
-            loss_classification = loss_fn(frame_logits, frame_labels)
-            loss = loss_generation + loss_classification
-            return loss, frame_logits, outputs
-            
-        return frame_logits, encoder_outputs
+try:
+    nltk.download('punkt', quiet=True)
+    nltk.download('punkt_tab', quiet=True)
+    nltk.download('averaged_perceptron_tagger', quiet=True)
+    nltk.download('averaged_perceptron_tagger_eng', quiet=True)
+except Exception as e:
+    pass
 
-    def predict(self, texto_input):
-        """Executa a inferência real recebendo o texto formatado pelo NLTK."""
-        self.eval()
-        inputs = self.tokenizer(texto_input, return_tensors="pt", padding=True, truncation=True)
-        input_ids = inputs["input_ids"]
-        attention_mask = inputs["attention_mask"]
-        
-        with torch.no_grad():
-            frame_logits, encoder_outputs = self.forward(input_ids, attention_mask)
-            frame_id = torch.argmax(frame_logits, dim=-1).item()
-            frame_predito = self.id_para_frame.get(frame_id, "Unknown_Frame")
-            
-            outputs_gerados = self.t5.generate(
-                encoder_outputs=encoder_outputs, 
-                attention_mask=attention_mask,
-                max_length=128,
-                num_beams=2,
-                early_stopping=True
-            )
-            texto_gerado = self.tokenizer.decode(outputs_gerados, skip_special_tokens=True)
-            
-        # CORREÇÃO DO ERRO DE TIPO: Garante que texto_gerado seja estritamente uma string limpa
-        if isinstance(texto_gerado, list):
-            texto_gerado = " ".join([str(t) for t in texto_gerado])
+@st.cache_resource
+def carregar_recursos():
+    if not os.path.exists(PATH_DB_LOCAL):
+        if os.path.exists(PATH_ZIP):
+            with zipfile.ZipFile(PATH_ZIP, 'r') as zip_ref:
+                zip_ref.extractall(".")
         else:
-            texto_gerado = str(texto_gerado).strip()
-            
-        try:
-            dados_argumentos = json.loads(texto_gerado)
-        except (json.JSONDecodeError, TypeError):
-            dados_argumentos = {"Theme": [], "Recipient": []}
-            theme_match = re.search(r"Theme\":\s*\[(.*?)\]", texto_gerado)
-            recipient_match = re.search(r"Recipient\":\s*\[(.*?)\]", texto_gerado)
-            
-            if theme_match:
-                dados_argumentos["Theme"] = [int(x) for x in theme_match.group(1).split(",") if x.strip().isdigit()]
-            if recipient_match:
-                dados_argumentos["Recipient"] = [int(x) for x in recipient_match.group(1).split(",") if x.strip().isdigit()]
-                
-        return {
-            "frame": frame_predito,
-            "arguments": dados_argumentos if isinstance(dados_argumentos, dict) else {}
-        }
-
-def buscar_detalhes_framenet(db_path, frame_name):
-    """
-    Consulta o banco SQLite adaptado à nova estrutura de tabelas:
-    tabela 'frames' associada à tabela 'frame_elements'.
-    """
-    dados_linguisticos = {
-        "acao": frame_name,
-        "definicao": "Sem definição cadastrada.",
-        "agente": "Não identificado",
-        "objetos": [],
-        "circunstancias": []
-    }
+            st.error(f"❌ Erro crítico: O arquivo compactado `{PATH_ZIP}` não foi encontrado!")
     
-    try:
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        
-        # 1. Busca a definição geral do Frame na tabela 'frames'
-        cursor.execute("SELECT definicao FROM frames WHERE nome = ?", (frame_name,))
-        row_frame = cursor.fetchone()
-        if row_frame:
-            dados_linguisticos["definicao"] = row_frame[0]
+    return HybridT5Model(model_name="t5-small", num_frames=50)
+
+modelo_hibrido = carregar_recursos()
+
+def pre_processar_texto_nltk(texto):
+    palavras = nltk.word_tokenize(texto)
+    tags_gramaticais = nltk.pos_tag(palavras)
+    gatilho_idx = None
+    
+    for idx, (palavra, tag) in enumerate(tags_gramaticais):
+        if tag.startswith('VB'):
+            gatilho_idx = idx
+            break
             
-        # 2. Busca os Elementos do Frame (FEs) fazendo JOIN
-        cursor.execute("""
-            SELECT fe.nome_fe, fe.tipo_coreness 
-            FROM frame_elements fe
-            JOIN frames f ON fe.frame_id = f.id_frame
-            WHERE f.nome = ?
-        """, (frame_name,))
-        
-        rows_fe = cursor.fetchall()
-        for nome_fe, tipo_coreness in rows_fe:
-            nome_lower = nome_fe.lower()
+    texto_indexado_list = []
+    texto_input_list = []
+    for idx, palabra in enumerate(palavras):
+        texto_indexado_list.append(f"{idx} {palavra}")
+        if idx == gatilho_idx:
+            texto_input_list.append(f"{idx} *{palavra}*")
+        else:
+            texto_input_list.append(f"{idx} {palavra}")
             
-            # CORREÇÃO: Ajustado o nome das variáveis internas de validação linguística
-            if "agent" in nome_lower or "protagonist" in nome_lower:
-                dados_linguisticos["agente"] = nome_fe
-            elif tipo_coreness == "Core" or "theme" in nome_lower or "item" in nome_lower:
-                dados_linguisticos["objetos"].append(nome_fe)
-            else:
-                dados_linguisticos["circunstancias"].append(nome_fe)
+    return " ".join(texto_indexado_list), " ".join(texto_input_list), palavras
+
+# --- INTERFACE ---
+st.set_page_config(page_title="Análise Semântica FrameNet T5", page_icon="🧠", layout="wide")
+st.title("🧠 Extrator Semântico Baseado em Frames (T5 Híbrido)")
+st.subheader("Integração ponta a ponta com Banco de Dados Relacional Corporativo")
+
+if not os.path.exists(PATH_DB_LOCAL):
+    st.error(f"❌ O arquivo do banco de dados `{PATH_DB_LOCAL}` não foi encontrado!")
+else:
+    st.success(f"✔ Nova estrutura do banco de dados conectada com sucesso!")
+
+frases_sugeridas = [
+    "enviar o relatório para o Diretor",
+    "comprar um livro na loja ontem",
+    "entregar os documentos para a secretária",
+    "vender o carro antigo para o vizinho"
+]
+
+frase_selecionada = st.selectbox("Escolha uma frase de exemplo ou digite abaixo:", frases_sugeridas)
+texto_usuario = st.text_input("Digite ou modifique a frase para análise:", value=frase_selecionada)
+
+if st.button("🚀 Processar Frase", type="primary"):
+    if texto_usuario.strip() == "":
+        st.warning("Por favor, insira um texto válido.")
+    else:
+        texto_idx, input_modelo, lista_palavras = pre_processar_texto_nltk(texto_usuario)
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.info(f"**Texto com Índices:**\n`{texto_idx}`")
+        with col2:
+            st.success(f"**Entrada Formatada para o T5 (Target):**\n`{input_modelo}`")
+            
+        with st.spinner("Modelos preditivos em execução..."):
+            json_real_retorno = modelo_hibrido.predict(input_modelo)
+            
+        st.divider()
+        st.subheader("📦 Saída Estruturada do Modelo (JSON Real)")
+        st.json(json_real_retorno)
+        
+        nome_frame = json_real_retorno["frame"]
+        dados_fn = buscar_detalhes_framenet(PATH_DB_LOCAL, nome_frame)
+        
+        st.divider()
+        st.subheader("📋 Informações Linguísticas Extraídas do seu Texto")
+        
+        argumentos_reais = {}
+        for papel, indices in json_real_retorno.get("arguments", {}).items():
+            if not isinstance(indices, list):
+                indices = [indices]
                 
-        conn.close()
-    except Exception as e:
-        dados_linguisticos["notes"] = f"Erro ao acessar a estrutura do banco: {str(e)}"
-        
-    return dados_linguisticos
+            tokens_fragmento = []
+            for i in indices:
+                try:
+                    if i is not None:
+                        idx_limpo = int(str(i).strip())
+                        if idx_limpo < len(lista_palavras):
+                            tokens_fragmento.append(lista_palavras[idx_limpo])
+                except ValueError:
+                    continue 
+            argumentos_reais[papel] = " ".join(tokens_fragmento) if tokens_fragmento else "Não detectado"
+            
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            st.metric(label="Ação Solicitada (Frame)", value=dados_fn["acao"])
+        with c2:
+            st.metric(label="Agente da Ação", value=argumentos_reais.get("Agent", argumentos_reais.get("Agente", "Não detectado")))
+        with c3:
+            obj_detectado = argumentos_reais.get("Theme", argumentos_reais.get("Item", "Não detectado"))
+            st.metric(label="Objetos (Theme)", value=obj_detectado)
+        with c4:
+            circ_detectada = argumentos_reais.get("Recipient", argumentos_reais.get("Place", "Não detectada"))
+            st.metric(label="Circunstâncias (Recipient)", value=circ_detectada)
+            
+        with st.expander("🔍 Ver Elementos Teóricos do Frame no Banco de Dados"):
+            st.markdown(f"**Definição do Frame no Banco:** *{dados_fn['definicao']}*")
+            st.write(f"**Elementos Centrais (Core):** {', '.join(dados_fn.get('objetos', []))}")
+            st.write(f"**Elementos Circunstanciais:** {', '.join(dados_fn.get('circunstancias', []))}")
+            
+        if "notes" in dados_fn:
+            st.warning(dados_fn["notes"])
