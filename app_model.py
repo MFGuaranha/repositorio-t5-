@@ -54,17 +54,18 @@ class HybridT5Model(nn.Module):
                 num_beams=2,
                 early_stopping=True
             )
-            texto_gerado = self.tokenizer.decode(outputs_gerados, skip_special_tokens=True)
             
-        # CORREÇÃO DO ERRO DE TIPO: Garante que texto_gerado seja estritamente uma string limpa
-        if isinstance(texto_gerado, list):
-            texto_gerado = " ".join([str(t) for t in texto_gerado])
-        else:
-            texto_gerado = str(texto_gerado).strip()
+            # CORREÇÃO DEFINITIVA: Usa batch_decode e extrai o primeiro item da lista gerada pelo T5
+            textos_decodificados = self.tokenizer.batch_decode(outputs_gerados, skip_special_tokens=True)
+            texto_gerado = textos_decodificados[0] if textos_decodificados else "{}"
+            
+        # Força de forma redundante que a variável seja uma string limpa
+        texto_gerado = str(texto_gerado).strip()
             
         try:
             dados_argumentos = json.loads(texto_gerado)
         except (json.JSONDecodeError, TypeError):
+            # Fallback seguro caso o T5 não gere uma estrutura JSON válida na string decodificada
             dados_argumentos = {"Theme": [], "Recipient": []}
             theme_match = re.search(r"Theme\":\s*\[(.*?)\]", texto_gerado)
             recipient_match = re.search(r"Recipient\":\s*\[(.*?)\]", texto_gerado)
@@ -100,7 +101,7 @@ def buscar_detalhes_framenet(db_path, frame_name):
         cursor.execute("SELECT definicao FROM frames WHERE nome = ?", (frame_name,))
         row_frame = cursor.fetchone()
         if row_frame:
-            dados_linguisticos["definicao"] = row_frame[0]
+            dados_linguisticos["definicao"] = row_frame[0] # Pega a string de dentro da tupla
             
         # 2. Busca os Elementos do Frame (FEs) fazendo JOIN
         cursor.execute("""
@@ -114,7 +115,6 @@ def buscar_detalhes_framenet(db_path, frame_name):
         for nome_fe, tipo_coreness in rows_fe:
             nome_lower = nome_fe.lower()
             
-            # CORREÇÃO: Ajustado o nome das variáveis internas de validação linguística
             if "agent" in nome_lower or "protagonist" in nome_lower:
                 dados_linguisticos["agente"] = nome_fe
             elif tipo_coreness == "Core" or "theme" in nome_lower or "item" in nome_lower:
@@ -127,4 +127,3 @@ def buscar_detalhes_framenet(db_path, frame_name):
         dados_linguisticos["notes"] = f"Erro ao acessar a estrutura do banco: {str(e)}"
         
     return dados_linguisticos
-
