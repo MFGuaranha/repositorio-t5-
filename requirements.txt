@@ -6,3 +6,4 @@ nltk
 pandas
 scikit-learn
 streamlit
+deep-translator
