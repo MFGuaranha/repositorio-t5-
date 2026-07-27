@@ -86,7 +86,7 @@ if st.button("🚀 Processar Frase", type="primary"):
         
         # 2. Processamento do texto traduzido com o motor NLTK
         texto_idx, input_modelo, lista_palavras = pre_processar_texto_nltk(frase_ingles)
-        
+        print("texto_idx, input_modelo, lista_palavras ",texto_idx, input_modelo, lista_palavras )
         col1, col2 = st.columns(2)
         with col1:
             st.caption("**Texto em Inglês Indexado:**")
@@ -106,7 +106,7 @@ if st.button("🚀 Processar Frase", type="primary"):
         # 4. Consulta ao banco de dados usando o frame predito em inglês
         nome_frame = json_real_retorno["frame"]
         dados_fn = buscar_detalhes_framenet(PATH_DB_LOCAL, nome_frame)
-        
+        print("dados_fn ", dados_fn )
         st.divider()
         st.subheader("📋 Informações Linguísticas Extraídas (Valores Reais)")
         
