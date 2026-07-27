@@ -2,7 +2,7 @@ import streamlit as st
 import os
 import zipfile
 import nltk
-print("[LOG app.py] 🎬 Carregando o script principal... Solicitando recursos de app_model.py")
+from deep_translator import GoogleTranslator  # Tradutor leve e rápido
 from app_model import HybridT5Model, buscar_detalhes_framenet
 
 PATH_ZIP = "framenet_completa.zip"
@@ -18,27 +18,25 @@ except Exception as e:
 
 @st.cache_resource
 def carregar_recursos():
-    print("[LOG app.py] 📥 Executando a função cacheada 'carregar_recursos'...")
     if not os.path.exists(PATH_DB_LOCAL):
         if os.path.exists(PATH_ZIP):
-            print("[LOG app.py] 📦 Banco .db ausente. Extraindo arquivos do arquivo compactado zip...")
             with zipfile.ZipFile(PATH_ZIP, 'r') as zip_ref:
                 zip_ref.extractall(".")
         else:
             st.error(f"❌ Erro crítico: O arquivo compactado `{PATH_ZIP}` não foi encontrado!")
     
-    print("[LOG app.py] 🔌 Instanciando a Inteligência Híbrida do T5...")
     return HybridT5Model(model_name="t5-small", num_frames=50)
 
 modelo_hibrido = carregar_recursos()
 
-def pre_processar_texto_nltk(texto):
-    palavras = nltk.word_tokenize(texto)
+def pre_processar_texto_nltk(texto_ingles):
+    """Processa o texto já traduzido para o inglês no padrão exigido pelo T5."""
+    palavras = nltk.word_tokenize(texto_ingles)
     tags_gramaticais = nltk.pos_tag(palavras)
     gatilho_idx = None
     
     for idx, (palavra, tag) in enumerate(tags_gramaticais):
-        if tag.startswith('VB'):
+        if tag.startswith('VB'):  # Identifica o verbo em inglês (ex: 'send', 'buy')
             gatilho_idx = idx
             break
             
@@ -56,12 +54,12 @@ def pre_processar_texto_nltk(texto):
 # --- INTERFACE ---
 st.set_page_config(page_title="Análise Semântica FrameNet T5", page_icon="🧠", layout="wide")
 st.title("🧠 Extrator Semântico Baseado em Frames (T5 Híbrido)")
-st.subheader("Integração ponta a ponta com Banco de Dados Relacional Corporativo")
+st.subheader("Tradução Automática e Integração com Banco de Dados FrameNet")
 
 if not os.path.exists(PATH_DB_LOCAL):
     st.error(f"❌ O arquivo do banco de dados `{PATH_DB_LOCAL}` não foi encontrado!")
 else:
-    st.success(f"✔ Nova estrutura do banco de dados conectada com sucesso!")
+    st.success(f"✔ Banco de dados FrameNet detectado e pronto!")
 
 frases_sugeridas = [
     "enviar o relatório para o Diretor",
@@ -70,38 +68,47 @@ frases_sugeridas = [
     "vender o carro antigo para o vizinho"
 ]
 
-frase_selecionada = st.selectbox("Escolha uma frase de exemplo ou digite abaixo:", frases_sugeridas)
+frase_selecionada = st.selectbox("Escolha uma frase de exemplo ou digite abaixo (em Português):", frases_sugeridas)
 texto_usuario = st.text_input("Digite ou modifique a frase para análise:", value=frase_selecionada)
 
 if st.button("🚀 Processar Frase", type="primary"):
     if texto_usuario.strip() == "":
         st.warning("Por favor, insira um texto válido.")
     else:
-        print(f"\n[LOG app.py] 🖱 O usuário clicou no botão! Processando a frase: '{texto_usuario}'")
-        texto_idx, input_modelo, lista_palavras = pre_processar_texto_nltk(texto_usuario)
+        # 1. FLUXO DE TRADUÇÃO AUTOMÁTICA (PT -> EN)
+        with st.spinner("Traduzindo frase para o inglês padrão FrameNet..."):
+            try:
+                frase_ingles = GoogleTranslator(source='pt', target='en').translate(texto_usuario)
+                st.info(f"🇺🇸 **Tradução gerada para processamento:** `{frase_ingles}`")
+            except Exception as e:
+                st.error(f"Erro na tradução: {e}")
+                frase_ingles = texto_usuario # Fallback seguro
+        
+        # 2. Processamento do texto traduzido com o motor NLTK
+        texto_idx, input_modelo, lista_palavras = pre_processar_texto_nltk(frase_ingles)
         
         col1, col2 = st.columns(2)
         with col1:
-            st.info(f"**Texto com Índices:**\n`{texto_idx}`")
+            st.caption("**Texto em Inglês Indexado:**")
+            st.code(texto_idx)
         with col2:
-            st.success(f"**Entrada Formatada para o T5 (Target):**\n`{input_modelo}`")
+            st.caption("**Entrada Formatada para o T5 (Target):**")
+            st.code(input_modelo)
             
-        print("[LOG app.py] 📞 Chamando a função 'predict' do arquivo app_model.py...")
-        with st.spinner("Modelos preditivos em execução..."):
+        # 3. Execução da Inteligência Artificial
+        with st.spinner("Modelos preditivos processando os frames estruturados..."):
             json_real_retorno = modelo_hibrido.predict(input_modelo)
-        print("[LOG app.py] 📥 Resposta recebida da predição do modelo com sucesso.")
             
         st.divider()
         st.subheader("📦 Saída Estruturada do Modelo (JSON Real)")
         st.json(json_real_retorno)
         
+        # 4. Consulta ao banco de dados usando o frame predito em inglês
         nome_frame = json_real_retorno["frame"]
-        print(f"[LOG app.py] 📞 Chamando a função 'buscar_detalhes_framenet' para o frame '{nome_frame}'...")
         dados_fn = buscar_detalhes_framenet(PATH_DB_LOCAL, nome_frame)
-        print("[LOG app.py] 📥 Dados da FrameNet carregados com sucesso do SQLite.")
         
         st.divider()
-        st.subheader("📋 Informações Linguísticas Extraídas do seu Texto")
+        st.subheader("📋 Informações Linguísticas Extraídas (Valores Reais)")
         
         argumentos_reais = {}
         for papel, indices in json_real_retorno.get("arguments", {}).items():
@@ -117,25 +124,27 @@ if st.button("🚀 Processar Frase", type="primary"):
                             tokens_fragmento.append(lista_palavras[idx_limpo])
                 except ValueError:
                     continue 
+            # Salva o termo real extraído da frase em inglês
             argumentos_reais[papel] = " ".join(tokens_fragmento) if tokens_fragmento else "Não detectado"
             
         c1, c2, c3, c4 = st.columns(4)
         with c1:
             st.metric(label="Ação Solicitada (Frame)", value=dados_fn["acao"])
         with c2:
-            st.metric(label="Agente da Ação", value=argumentos_reais.get("Agent", argumentos_reais.get("Agente", "Não detectado")))
+            st.metric(label="Agente da Ação (Agent)", value=argumentos_reais.get("Agent", "Não detectado"))
         with c3:
             obj_detectado = argumentos_reais.get("Theme", argumentos_reais.get("Item", "Não detectado"))
-            st.metric(label="Objetos (Theme)", value=obj_detectado)
+            st.metric(label="Objeto Extraído (Theme)", value=obj_detectado)
         with c4:
             circ_detectada = argumentos_reais.get("Recipient", argumentos_reais.get("Place", "Não detectada"))
             st.metric(label="Circunstâncias (Recipient)", value=circ_detectada)
             
         with st.expander("🔍 Ver Elementos Teóricos do Frame no Banco de Dados"):
-            st.markdown(f"**Definição do Frame no Banco:** *{dados_fn['definicao']}*")
+            # Converte a tupla de definição do banco para string pura de exibição
+            def_limpa = dados_fn['definicao'][0] if isinstance(dados_fn['definicao'], tuple) else dados_fn['definicao']
+            st.markdown(f"**Definição do Frame no Banco:** *{def_limpa}*")
             st.write(f"**Elementos Centrais (Core):** {', '.join(dados_fn.get('objetos', []))}")
             st.write(f"**Elementos Circunstanciais:** {', '.join(dados_fn.get('circunstancias', []))}")
             
         if "notes" in dados_fn:
             st.warning(dados_fn["notes"])
-        print("[LOG app.py] ✨ Renderização final concluída na tela do usuário.\n" + "="*50)
