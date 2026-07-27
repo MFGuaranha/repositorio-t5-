@@ -4,14 +4,12 @@ import zipfile
 import nltk
 from app_model import HybridT5Model, buscar_detalhes_framenet
 
-# Definição dos caminhos locais e do arquivo compactado
 PATH_ZIP = "framenet_completa.zip"
 PATH_DB_LOCAL = "framenet_completa.db"
 
-# Executa os downloads do NLTK de forma segura
 try:
     nltk.download('punkt', quiet=True)
-    nltk.download('punkt_tab', quiet=True)          
+    nltk.download('punkt_tab', quiet=True)
     nltk.download('averaged_perceptron_tagger', quiet=True)
     nltk.download('averaged_perceptron_tagger_eng', quiet=True)
 except Exception as e:
@@ -19,35 +17,29 @@ except Exception as e:
 
 @st.cache_resource
 def carregar_recursos():
-    """Garante que os modelos e arquivos sejam extraídos apenas uma vez."""
-    # 1. Extração automática do Banco de Dados caso ele não exista descompactado
     if not os.path.exists(PATH_DB_LOCAL):
         if os.path.exists(PATH_ZIP):
             with zipfile.ZipFile(PATH_ZIP, 'r') as zip_ref:
-                zip_ref.extractall(".") # Extrai o arquivo .db na raiz do projeto
+                zip_ref.extractall(".")
         else:
             st.error(f"❌ Erro crítico: O arquivo compactado `{PATH_ZIP}` não foi encontrado!")
-        
-    modelo_hibrido = HybridT5Model(model_name="t5-small", num_frames=50) 
-    return modelo_hibrido
+    
+    return HybridT5Model(model_name="t5-small", num_frames=50)
 
-# Inicializa o cache dos modelos
 modelo_hibrido = carregar_recursos()
 
 def pre_processar_texto_nltk(texto):
-    """Transforma o texto no padrão indexado com marcação de alvos (*target*) usando NLTK."""
     palavras = nltk.word_tokenize(texto)
     tags_gramaticais = nltk.pos_tag(palavras)
-    
     gatilho_idx = None
+    
     for idx, (palavra, tag) in enumerate(tags_gramaticais):
-        if tag.startswith('VB'):  # Captura qualquer variação de classe verbal
+        if tag.startswith('VB'):
             gatilho_idx = idx
             break
             
     texto_indexado_list = []
     texto_input_list = []
-    
     for idx, palavra in enumerate(palavras):
         texto_indexado_list.append(f"{idx} {palavra}")
         if idx == gatilho_idx:
@@ -57,29 +49,30 @@ def pre_processar_texto_nltk(texto):
             
     return " ".join(texto_indexado_list), " ".join(texto_input_list), palavras
 
-# --- CONFIGURAÇÃO DA INTERFACE STREAMLIT ---
+# --- INTERFACE ---
 st.set_page_config(page_title="Análise Semântica FrameNet T5", page_icon="🧠", layout="wide")
-
 st.title("🧠 Extrator Semântico Baseado em Frames (T5 Híbrido)")
-st.subheader("Transforme linguagem natural em dados estruturados com Deep Learning (NLTK Backend)")
+st.subheader("Integração ponta a ponta com Banco de Dados Relacional Corporativo")
 
-# Validação visual do banco de dados na inicialização
 if not os.path.exists(PATH_DB_LOCAL):
-    st.error(f"❌ O arquivo do banco de dados `{PATH_DB_LOCAL}` não foi encontrado no repositório! Verifique seu GitHub.")
+    st.error(f"❌ O arquivo do banco de dados `{PATH_DB_LOCAL}` não foi encontrado!")
 else:
-    st.success(f"✔ Banco de dados `framenet_completa.db` detectado e pronto para consultas!")
+    st.success(f"✔ Nova estrutura do banco de dados conectada com sucesso!")
 
-texto_usuario = st.text_input(
-    "Digite a frase para análise:", 
-    value="enviar o relatório para o Diretor",
-    placeholder="Ex: comprar um livro na loja ontem"
-)
+frases_sugeridas = [
+    "enviar o relatório para o Diretor",
+    "comprar um livro na loja ontem",
+    "entregar os documentos para a secretária",
+    "vender o carro antigo para o vizinho"
+]
+
+frase_selecionada = st.selectbox("Escolha uma frase de exemplo ou digite abaixo:", frases_sugeridas)
+texto_usuario = st.text_input("Digite ou modifique a frase para análise:", value=frase_selecionada)
 
 if st.button("🚀 Processar Frase", type="primary"):
     if texto_usuario.strip() == "":
         st.warning("Por favor, insira um texto válido.")
     else:
-        # 1. Processamento de texto com o novo motor NLTK
         texto_idx, input_modelo, lista_palavras = pre_processar_texto_nltk(texto_usuario)
         
         col1, col2 = st.columns(2)
@@ -88,55 +81,52 @@ if st.button("🚀 Processar Frase", type="primary"):
         with col2:
             st.success(f"**Entrada Formatada para o T5 (Target):**\n`{input_modelo}`")
             
-        # 2. CORREÇÃO COMPLETA: Dicionário estrito usando listas de inteiros puros (1, 2) e (4, 5)
-        json_mock_retorno = {
-            "frame": "Sending",
-            "arguments": {
-                "Theme":  [1,2] ,    # Índices de "o relatório"
-                "Recipient": [4, 5]    # Índices de "o Diretor"
-            }
-        }
-        
+        with st.spinner("Modelos preditivos em execução..."):
+            json_real_retorno = modelo_hibrido.predict(input_modelo)
+            
         st.divider()
-        st.subheader("📦 Saída Estruturada do Modelo (JSON)")
-        st.json(json_mock_retorno)
+        st.subheader("📦 Saída Estruturada do Modelo (JSON Real)")
+        st.json(json_real_retorno)
         
-        # 3. Consulta ao SQLite utilizando o caminho dinâmico do GitHub
-        nome_frame = json_mock_retorno["frame"]
+        # Chamada à nova lógica do SQLite
+        nome_frame = json_real_retorno["frame"]
         dados_fn = buscar_detalhes_framenet(PATH_DB_LOCAL, nome_frame)
         
-        # 4. Mapeamento dos índices nos tokens reais com verificação de tipo robusta
         st.divider()
-        st.subheader("📋 Informações Linguísticas Extraídas")
+        st.subheader("📋 Informações Linguísticas Extraídas do seu Texto")
         
         argumentos_reais = {}
-        for papel, indices in json_mock_retorno["arguments"].items():
+        for papel, indices in json_real_retorno.get("arguments", {}).items():
+            if not isinstance(indices, list):
+                indices = [indices]
+                
             tokens_fragmento = []
             for i in indices:
-                # Garante conversão segura para inteiro removendo espaços extras
                 try:
                     idx_limpo = int(str(i).strip())
                     if idx_limpo < len(lista_palavras):
                         tokens_fragmento.append(lista_palavras[idx_limpo])
                 except ValueError:
-                    continue # Ignora caracteres inválidos com segurança
+                    continue 
+            argumentos_reais[papel] = " ".join(tokens_fragmento) if tokens_fragmento else "Não detectado"
             
-            argumentos_reais[papel] = " ".join(tokens_fragmento)
-
         c1, c2, c3, c4 = st.columns(4)
         with c1:
             st.metric(label="Ação Solicitada (Frame)", value=dados_fn["acao"])
         with c2:
-            st.metric(label="Agente da Ação", value=argumentos_reais.get("Agent", "Não detectado"))
+            st.metric(label="Agente da Ação", value=argumentos_reais.get("Agent", argumentos_reais.get("Agente", "Não detectado")))
         with c3:
             obj_detectado = argumentos_reais.get("Theme", argumentos_reais.get("Item", "Não detectado"))
-            st.metric(label="Objetos (Direto/Indireto)", value=obj_detectado)
+            st.metric(label="Objetos (Theme)", value=obj_detectado)
         with c4:
             circ_detectada = argumentos_reais.get("Recipient", argumentos_reais.get("Place", "Não detectada"))
-            st.metric(label="Circunstâncias da Ação", value=circ_detectada)
-
+            st.metric(label="Circunstâncias (Recipient)", value=circ_detectada)
+            
+        # Exibe a definição real vinda do banco no expander
         with st.expander("🔍 Ver Elementos Teóricos do Frame no Banco de Dados"):
+            st.markdown(f"**Definição do Frame no Banco:** *{dados_fn['definicao']}*")
             st.write(f"**Elementos Centrais (Core):** {', '.join(dados_fn.get('objetos', []))}")
             st.write(f"**Elementos Circunstanciais:** {', '.join(dados_fn.get('circunstancias', []))}")
-            if "notes" in dados_fn:
-                st.warning(dados_fn["notes"])
+            
+        if "notes" in dados_fn:
+            st.warning(dados_fn["notes"])
